@@ -1,1 +1,1 @@
-Singfred
+Singfred Project
