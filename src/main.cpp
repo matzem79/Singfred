@@ -318,9 +318,10 @@ static void nextTrack(uint16_t track)
       Serial.println(F("Ende der Queue -> beginne von vorne"));
       currentTrack = 1;
       //// Wenn am Ende der Queue neu gemischt werden soll bitte die Zeilen wieder aktivieren
-      //     Serial.println(F("Ende der Queue -> mische neu"));
-      //     shuffleQueue();
+      Serial.println(F("Ende der Queue -> mische neu"));
+      shuffleQueue();
     }
+
     Serial.println(queue[currentTrack - 1]);
     mp3.playFolderTrack(myFolder->folder, queue[currentTrack - 1]);
     EEPROM.update(myFolder->folder, queue[currentTrack - 1]);
@@ -330,7 +331,8 @@ static void nextTrack(uint16_t track)
   {
     Serial.println(F("Einzel Modus aktiv -> Strom sparen"));
     //    mp3.sleep();      // Je nach Modul kommt es nicht mehr zurück aus dem Sleep!
-    setstandbyTimer();
+    // setstandbyTimer();
+    mp3.playFolderTrack(myFolder->folder, currentTrack);
   }
   if (myFolder->mode == 5)
   {
@@ -1025,34 +1027,85 @@ void adminMenu()
     mySettings.maxVolume = voiceMenu(30, 930, 0, false, false,
                                      mySettings.maxVolume);
   }
-  else if (subMenu == 3)
-  {
-    // Minimum Volume
-    mySettings.minVolume = voiceMenu(30, 931, 0, false, false,
-                                     mySettings.minVolume);
-  }
-  else if (subMenu == 4)
-  {
-    // Initial Volume
-    mySettings.initVolume = voiceMenu(30, 932, 0, false, false,
-                                      mySettings.initVolume);
-  }
-  else if (subMenu == 5)
-  {
-    // EQ
-    mySettings.eq = voiceMenu(6, 920, 920, false, false, mySettings.eq);
-    mp3.setEq(static_cast<DfMp3_Eq>(mySettings.eq - 1));
-  }
+  // else if (subMenu == 3)
+  // {
+  //   // Minimum Volume
+  //   mySettings.minVolume = voiceMenu(30, 931, 0, false, false,
+  //                                    mySettings.minVolume);
+  // }
+  // else if (subMenu == 4)
+  // {
+  //   // Initial Volume
+  //   mySettings.initVolume = voiceMenu(30, 932, 0, false, false,
+  //                                     mySettings.initVolume);
+  // }
+  // else if (subMenu == 5)
+  // {
+  //   // EQ
+  //   mySettings.eq = voiceMenu(6, 920, 920, false, false, mySettings.eq);
+  //   mp3.setEq(static_cast<DfMp3_Eq>(mySettings.eq - 1));
+  // }
   else if (subMenu == 6)
   {
-    // create master card
+    // create modifier card
+    nfcTagObject tempCard;
+    tempCard.cookie = cardCookie;
+    tempCard.version = 1;
+    tempCard.nfcFolderSettings.folder = 0;
+    tempCard.nfcFolderSettings.special = 0;
+    tempCard.nfcFolderSettings.special2 = 0;
+    tempCard.nfcFolderSettings.mode = voiceMenu(4, 970, 970, false, false, 0, true);
+
+    if (tempCard.nfcFolderSettings.mode != 0)
+    {
+      if (tempCard.nfcFolderSettings.mode == 1)
+      {
+        switch (voiceMenu(4, 960, 960))
+        {
+        case 1:
+          tempCard.nfcFolderSettings.special = 5;
+          break;
+        case 2:
+          tempCard.nfcFolderSettings.special = 15;
+          break;
+        case 3:
+          tempCard.nfcFolderSettings.special = 30;
+          break;
+        case 4:
+          tempCard.nfcFolderSettings.special = 60;
+          break;
+        }
+      }
+      mp3.playMp3FolderTrack(800);
+      do
+      {
+        readButtons();
+        if (upButton.wasReleased() || downButton.wasReleased())
+        {
+          Serial.println(F("Abgebrochen!"));
+          mp3.playMp3FolderTrack(802);
+          return;
+        }
+      } while (!mfrc522.PICC_IsNewCardPresent());
+
+      // RFID Karte wurde aufgelegt
+      if (mfrc522.PICC_ReadCardSerial())
+      {
+        Serial.println(F("schreibe Karte..."));
+        writeCard(tempCard);
+        delay(100);
+        mfrc522.PICC_HaltA();
+        mfrc522.PCD_StopCrypto1();
+        waitForTrackToFinish();
+      }
+    }
   }
-  else if (subMenu == 7)
-  {
-    uint8_t shortcut = voiceMenu(4, 940, 940);
-    setupFolder(&mySettings.shortCuts[shortcut - 1]);
-    mp3.playMp3FolderTrack(400);
-  }
+  // else if (subMenu == 7)
+  // {
+  //   uint8_t shortcut = voiceMenu(4, 940, 940);
+  //   setupFolder(&mySettings.shortCuts[shortcut - 1]);
+  //   mp3.playMp3FolderTrack(400);
+  // }
   else if (subMenu == 8)
   {
     switch (voiceMenu(5, 960, 960))
@@ -1120,19 +1173,19 @@ void adminMenu()
       waitForTrackToFinish();
     }
   }
-  else if (subMenu == 10)
-  {
-    // Invert Functions for Up/Down Buttons
-    int temp = voiceMenu(2, 933, 933, false);
-    if (temp == 2)
-    {
-      mySettings.invertVolumeButtons = true;
-    }
-    else
-    {
-      mySettings.invertVolumeButtons = false;
-    }
-  }
+  // else if (subMenu == 10)
+  // {
+  //   // Invert Functions for Up/Down Buttons
+  //   int temp = voiceMenu(2, 933, 933, false);
+  //   if (temp == 2)
+  //   {
+  //     mySettings.invertVolumeButtons = true;
+  //   }
+  //   else
+  //   {
+  //     mySettings.invertVolumeButtons = false;
+  //   }
+  // }
   else if (subMenu == 11)
   {
     Serial.println(F("Reset -> EEPROM wird gelöscht"));
@@ -1339,8 +1392,8 @@ void setupFolder(folderSettings *theFolder)
         mp3.getFolderTrackCount(theFolder->folder), 320, 0, true,
         theFolder->folder);
   // Admin Funktionen
-  if (theFolder->mode == 6)
-    theFolder->special = voiceMenu(3, 320, 320);
+  //if (theFolder->mode == 6)
+  //theFolder->special = voiceMenu(3, 320, 320);
 
   // Spezialmodus Von-Bis
   if (theFolder->mode == 7 || theFolder->mode == 8 || theFolder->mode == 9)
@@ -1484,7 +1537,65 @@ bool readCard(nfcTagObject *nfcTag)
   nfcTag->nfcFolderSettings.special = buffer[7];
   nfcTag->nfcFolderSettings.special2 = buffer[8];
 
+  if (nfcTag->nfcFolderSettings.folder == 0)
+  {
+
+    if (isPlaying())
+    {
+      mp3.playAdvertisement(260);
+    }
+    else
+    {
+      mp3.start();
+      delay(100);
+      mp3.playAdvertisement(260);
+      delay(100);
+      mp3.start();
+    }
+    switch (nfcTag->nfcFolderSettings.mode)
+    {
+    case 0:
+    case 1:
+      mySettings.standbyTimer = nfcTag->nfcFolderSettings.special;
+      setstandbyTimer();
+      delay(2000);
+      return false;
+      break;
+    case 2:
+      nfcTag->nfcFolderSettings.folder = currentCard.folder;
+      Serial.print(F("Folder: "));
+      Serial.println(nfcTag->nfcFolderSettings.folder);
+
+      Serial.print(F("Mode: "));
+      Serial.println(nfcTag->nfcFolderSettings.mode);
+      break;
+    case 3:
+      nfcTag->nfcFolderSettings.folder = currentCard.folder;
+      Serial.print(F("Folder: "));
+      Serial.println(nfcTag->nfcFolderSettings.folder);
+
+      Serial.print(F("Mode: "));
+      Serial.println(nfcTag->nfcFolderSettings.mode);
+      break;
+    case 4:
+      nfcTag->nfcFolderSettings.folder = currentCard.folder;
+      nfcTag->nfcFolderSettings.special = EEPROM.read(myFolder->folder);
+      Serial.print(F("Folder: "));
+      Serial.println(nfcTag->nfcFolderSettings.folder);
+
+      Serial.print(F("Mode: "));
+      Serial.println(nfcTag->nfcFolderSettings.mode);
+
+      Serial.print(F("Special: "));
+      Serial.println(nfcTag->nfcFolderSettings.special);
+      break;
+    }
+    delay(2000);
+  }
+
+  Serial.println(nfcTag->nfcFolderSettings.folder);
   myFolder = &nfcTag->nfcFolderSettings;
+  Serial.println(myFolder->folder);
 
   return true;
 }
