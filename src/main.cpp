@@ -27,7 +27,6 @@ static const uint32_t cardCookie = 322417479;
 SoftwareSerial mySoftwareSerial(2, 3); // RX, TX
 uint16_t numTracksInFolder;
 uint16_t currentTrack;
-uint16_t currentTrackFromFlash;
 uint16_t firstTrack;
 uint8_t queue[255];
 uint8_t volume;
@@ -166,6 +165,29 @@ void writeSettingsToFlash()
   int address = (sizeof(myFolder->folder) * 100) + sizeof(currentCard);
   Serial.println(F("to address"));
   Serial.println(address);
+  Serial.print(F("Version: "));
+  Serial.println(mySettings.version);
+
+  Serial.print(F("Maximal Volume: "));
+  Serial.println(mySettings.maxVolume);
+
+  Serial.print(F("Minimal Volume: "));
+  Serial.println(mySettings.minVolume);
+
+  Serial.print(F("Initial Volume: "));
+  Serial.println(mySettings.initVolume);
+
+  Serial.print(F("EQ: "));
+  Serial.println(mySettings.eq);
+
+  Serial.print(F("Locked: "));
+  Serial.println(mySettings.locked);
+
+  Serial.print(F("Sleep Timer: "));
+  Serial.println(mySettings.standbyTimer);
+
+  Serial.print(F("Inverted Volume Buttons: "));
+  Serial.println(mySettings.invertVolumeButtons);
   EEPROM.put(address, mySettings);
 }
 
@@ -329,7 +351,7 @@ static void nextTrack(uint16_t track)
 
   if (myFolder->mode == 4)
   {
-    Serial.println(F("Einzel Modus aktiv -> Strom sparen"));
+    Serial.println(F("Einzel Modus aktiv -> Track von vorne spielen"));
     //    mp3.sleep();      // Je nach Modul kommt es nicht mehr zurück aus dem Sleep!
     // setstandbyTimer();
     mp3.playFolderTrack(myFolder->folder, currentTrack);
@@ -693,13 +715,13 @@ void playFolder()
         F(
             "Party Modus -> Ordner in zufälliger Reihenfolge wiedergeben"));
     shuffleQueue();
-    currentTrackFromFlash = EEPROM.read(myFolder->folder);
+    currentTrack = EEPROM.read(myFolder->folder);
     if (currentTrack == 0 || currentTrack > numTracksInFolder)
     {
       currentTrack = 1;
     }
     //		currentTrack = 1;
-    mp3.playFolderTrack(myFolder->folder, currentTrackFromFlash);
+    mp3.playFolderTrack(myFolder->folder, queue[currentTrack - 1]);
   }
   // Einzel Modus: eine Datei aus dem Ordner abspielen
   if (myFolder->mode == 4)
@@ -1012,7 +1034,7 @@ void adminMenu()
   Serial.println(F("=== adminMenu()"));
   knownCard = false;
 
-  int subMenu = voiceMenu(11, 900, 900, false, false, 0, true);
+  int subMenu = voiceMenu(6, 900, 900, false, false, 0, true);
   if (subMenu == 0)
     return;
   if (subMenu == 1)
@@ -1027,25 +1049,7 @@ void adminMenu()
     mySettings.maxVolume = voiceMenu(30, 930, 0, false, false,
                                      mySettings.maxVolume);
   }
-  // else if (subMenu == 3)
-  // {
-  //   // Minimum Volume
-  //   mySettings.minVolume = voiceMenu(30, 931, 0, false, false,
-  //                                    mySettings.minVolume);
-  // }
-  // else if (subMenu == 4)
-  // {
-  //   // Initial Volume
-  //   mySettings.initVolume = voiceMenu(30, 932, 0, false, false,
-  //                                     mySettings.initVolume);
-  // }
-  // else if (subMenu == 5)
-  // {
-  //   // EQ
-  //   mySettings.eq = voiceMenu(6, 920, 920, false, false, mySettings.eq);
-  //   mp3.setEq(static_cast<DfMp3_Eq>(mySettings.eq - 1));
-  // }
-  else if (subMenu == 6)
+  else if (subMenu == 3)
   {
     // create modifier card
     nfcTagObject tempCard;
@@ -1054,13 +1058,13 @@ void adminMenu()
     tempCard.nfcFolderSettings.folder = 0;
     tempCard.nfcFolderSettings.special = 0;
     tempCard.nfcFolderSettings.special2 = 0;
-    tempCard.nfcFolderSettings.mode = voiceMenu(4, 970, 970, false, false, 0, true);
+    tempCard.nfcFolderSettings.mode = voiceMenu(5, 970, 970, false, false, 0, true);
 
     if (tempCard.nfcFolderSettings.mode != 0)
     {
       if (tempCard.nfcFolderSettings.mode == 1)
       {
-        switch (voiceMenu(4, 960, 960))
+        switch (voiceMenu(5, 960, 960))
         {
         case 1:
           tempCard.nfcFolderSettings.special = 5;
@@ -1074,7 +1078,16 @@ void adminMenu()
         case 4:
           tempCard.nfcFolderSettings.special = 60;
           break;
+        case 5:
+          tempCard.nfcFolderSettings.special = 0;
+          break;
         }
+      }
+      if (tempCard.nfcFolderSettings.mode == 5)
+      {
+        // Maximum Volume
+        tempCard.nfcFolderSettings.special = voiceMenu(30, 930, 0, false, false,
+                                                       mySettings.maxVolume);
       }
       mp3.playMp3FolderTrack(800);
       do
@@ -1100,13 +1113,7 @@ void adminMenu()
       }
     }
   }
-  // else if (subMenu == 7)
-  // {
-  //   uint8_t shortcut = voiceMenu(4, 940, 940);
-  //   setupFolder(&mySettings.shortCuts[shortcut - 1]);
-  //   mp3.playMp3FolderTrack(400);
-  // }
-  else if (subMenu == 8)
+  else if (subMenu == 4)
   {
     switch (voiceMenu(5, 960, 960))
     {
@@ -1127,7 +1134,7 @@ void adminMenu()
       break;
     }
   }
-  else if (subMenu == 9)
+  else if (subMenu == 5)
   {
     // Create Cards for Folder
     // Ordner abfragen
@@ -1173,20 +1180,7 @@ void adminMenu()
       waitForTrackToFinish();
     }
   }
-  // else if (subMenu == 10)
-  // {
-  //   // Invert Functions for Up/Down Buttons
-  //   int temp = voiceMenu(2, 933, 933, false);
-  //   if (temp == 2)
-  //   {
-  //     mySettings.invertVolumeButtons = true;
-  //   }
-  //   else
-  //   {
-  //     mySettings.invertVolumeButtons = false;
-  //   }
-  // }
-  else if (subMenu == 11)
+  else if (subMenu == 6)
   {
     Serial.println(F("Reset -> EEPROM wird gelöscht"));
     for (int i = 0; i < EEPROM.length(); i++)
@@ -1262,7 +1256,7 @@ uint8_t voiceMenu(int numberOfOptions, int startMessage, int messageOffset,
       //returnValue = min(returnValue + 10, numberOfOptions);
       returnValue = returnValue + 10;
       if (returnValue > numberOfOptions)
-        returnValue = defaultValue;
+        returnValue = 1;
       Serial.println(returnValue);
       //mp3.pause();
       mp3.playMp3FolderTrack(messageOffset + returnValue);
@@ -1282,7 +1276,7 @@ uint8_t voiceMenu(int numberOfOptions, int startMessage, int messageOffset,
         //returnValue = min(returnValue + 1, numberOfOptions);
         returnValue = returnValue + 1;
         if (returnValue > numberOfOptions)
-          returnValue = defaultValue;
+          returnValue = 1;
         Serial.println(returnValue);
         //mp3.pause();
         mp3.playMp3FolderTrack(messageOffset + returnValue);
@@ -1539,7 +1533,8 @@ bool readCard(nfcTagObject *nfcTag)
 
   if (nfcTag->nfcFolderSettings.folder == 0)
   {
-
+    Serial.print(F("Folder read card: "));
+    Serial.println(nfcTag->nfcFolderSettings.folder);
     if (isPlaying())
     {
       mp3.playAdvertisement(260);
@@ -1552,6 +1547,7 @@ bool readCard(nfcTagObject *nfcTag)
       delay(100);
       mp3.start();
     }
+
     switch (nfcTag->nfcFolderSettings.mode)
     {
     case 0:
@@ -1559,6 +1555,8 @@ bool readCard(nfcTagObject *nfcTag)
       mySettings.standbyTimer = nfcTag->nfcFolderSettings.special;
       setstandbyTimer();
       delay(2000);
+      if (!isPlaying())
+        mp3.start();
       return false;
       break;
     case 2:
@@ -1588,6 +1586,14 @@ bool readCard(nfcTagObject *nfcTag)
 
       Serial.print(F("Special: "));
       Serial.println(nfcTag->nfcFolderSettings.special);
+      break;
+    case 5:
+      mySettings.maxVolume = nfcTag->nfcFolderSettings.special;
+      writeSettingsToFlash();
+      delay(2000);
+      if (!isPlaying())
+        mp3.start();
+      return false;
       break;
     }
     delay(2000);
